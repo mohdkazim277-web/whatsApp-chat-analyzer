@@ -5,40 +5,50 @@ import streamlit as st
 st.title("📊 WhatsApp Chat Analyzer")
 st.write("Upload your exported WhatsApp chat (.txt format) to analyze group activity!")
 
-# File uploader widget
 uploaded_file = st.file_uploader("Choose a chat text file", type="txt")
 
 if uploaded_file is not None:
-    # Read the file lines
     bytes_data = uploaded_file.getvalue()
     chat_text = bytes_data.decode("utf-8")
     lines = chat_text.split("\n")
     
-    # Simple regex pattern to catch: [Date, Time] Sender: Message
-    # Note: WhatsApp export formats can slightly vary by device, this is a basic parser
-    pattern = r'\[?(\d{2}/\d{2}/\d{2}),?\s(\d{1,2}:\d{2}:\d{2}\s?[APM]*)]?\s-\s([^:]+):\s(.*)'
-    
     data = []
+    
+    # Simple, highly flexible patterns to try out
+    pattern_with_brackets = r'^\[.*?\]\s*([^:]+):\s*(.*)'  # Matches: [anything] Sender: Message
+    pattern_with_dash = r'^.*?\s-\s*([^:]+):\s*(.*)'       # Matches: anything - Sender: Message
+
     for line in lines:
-        match = re.match(pattern, line)
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Try bracket style first
+        match = re.match(pattern_with_brackets, line)
+        if not match:
+            # Try dash style second
+            match = re.match(pattern_with_dash, line)
+            
         if match:
-            date, time, sender, message = match.groups()
-            data.append({"Sender": sender, "Message": message})
+            sender, message = match.groups()
+            # Clean up the sender name (remove any trailing system characters)
+            sender = sender.strip()
+            # Ignore automated WhatsApp system notifications (e.g., "Messages are encrypted")
+            if "changed the subject" not in message and "added" not in message:
+                data.append({"Sender": sender, "Message": message.strip()})
             
     if data:
         df = pd.DataFrame(data)
         
-        # --- ANALYSIS ---
         st.subheader("🏆 Leaderboard (Most Active Members)")
-        # Count messages per sender
         sender_counts = df["Sender"].value_counts()
         
-        # Display as a chart
+        # Display the visual bar chart
         st.bar_chart(sender_counts)
         
-        # Show raw data metrics
+        # Metrics display
         st.metric(label="Total Messages Analyzed", value=len(df))
         st.dataframe(df)
     else:
-        st.warning("Could not parse data. Ensure it's a standard WhatsApp export text file.")
-
+        st.error("Could not parse data.")
+        st.info("💡 **Debug Info:** Try opening your chat text file in a text editor on your Mac and copying just the first 2 lines here so we can see exactly what it looks like!")
